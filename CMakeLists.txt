@@ -16,6 +16,9 @@ include_directories(src)
 # Add executable
 add_executable(${PROJECT_NAME} 
     src/main.cpp
+    src/lexer.cpp
+    src/parser.cpp
+    src/interpreter.cpp
 )
 
 # Optional: Add a library if you have multiple source files

@@ -54,6 +54,8 @@ void Interpreter::interpret(const Program& program) {
         for (const auto& stmt : program.statements) {
             execute(*stmt);
         }
+    } catch (const ReturnException& ret) {
+        std::cout << "Top-level return: " << valueToString(ret.value) << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Runtime error: " << e.what() << std::endl;
     }
@@ -101,6 +103,44 @@ Value Interpreter::evaluate(const Expression& expr) {
             std::vector<Value> arguments;
             for (const auto& arg : call_expr.arguments) {
                 arguments.push_back(evaluate(*arg));
+            }
+            
+            // Handle user-defined functions
+            if (std::holds_alternative<std::shared_ptr<Function>>(callee)) {
+                auto function = std::get<std::shared_ptr<Function>>(callee);
+                
+                // Check argument count
+                if (arguments.size() != function->parameters.size()) {
+                    throw std::runtime_error("Expected " + std::to_string(function->parameters.size()) +
+                                           " arguments but got " + std::to_string(arguments.size()));
+                }
+                
+                // Create new environment for function execution
+                auto func_env = std::make_shared<Environment>(function->closure);
+                
+                // Bind parameters to arguments
+                for (size_t i = 0; i < function->parameters.size(); ++i) {
+                    func_env->define(function->parameters[i], arguments[i]);
+                }
+                
+                // Execute function body
+                std::shared_ptr<Environment> previous = environment;
+                environment = func_env;
+                
+                Value result = nullptr;
+                try {
+                    for (const auto& stmt : function->body->statements) {
+                        execute(*stmt);
+                    }
+                } catch (const ReturnException& ret) {
+                    result = ret.value;
+                } catch (...) {
+                    environment = previous;
+                    throw;
+                }
+                
+                environment = previous;
+                return result;
             }
             
             // Handle builtin functions
@@ -192,8 +232,21 @@ void Interpreter::execute(const Statement& stmt) {
             if (return_stmt.value) {
                 value = evaluate(*return_stmt.value);
             }
-            // For now, just print the return value
-            std::cout << "Return: " << valueToString(value) << std::endl;
+            throw ReturnException(value);
+        }
+        
+        case NodeType::FUNCTION_DEF_STMT: {
+            const auto& func_stmt = static_cast<const FunctionDefStatement&>(stmt);
+            
+            // Create function object with closure
+            auto function = std::make_shared<Function>(
+                func_stmt.parameters,
+                func_stmt.body.get(),
+                environment
+            );
+            
+            // Define the function in the current environment
+            environment->define(func_stmt.name, function);
             break;
         }
         
@@ -243,6 +296,8 @@ std::string Interpreter::valueToString(const Value& value) {
             return v ? "True" : "False";
         } else if constexpr (std::is_same_v<T, std::nullptr_t>) {
             return "None";
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<Function>>) {
+            return "<function>";
         }
         return "unknown";
     }, value);
@@ -259,6 +314,8 @@ bool Interpreter::isTruthy(const Value& value) {
             return v != 0.0;
         } else if constexpr (std::is_same_v<T, std::string>) {
             return !v.empty();
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<Function>>) {
+            return true; // Functions are always truthy
         }
         return true;
     }, value);
@@ -364,13 +421,20 @@ void Interpreter::setupBuiltins() {
             std::cout << std::visit([](const auto& v) -> std::string {
                 using T = std::decay_t<decltype(v)>;
                 if constexpr (std::is_same_v<T, double>) {
-                    return std::to_string(v);
+                    double val = v;
+                    if (val == std::floor(val)) {
+                        return std::to_string(static_cast<int>(val));
+                    } else {
+                        return std::to_string(val);
+                    }
                 } else if constexpr (std::is_same_v<T, std::string>) {
                     return v;
                 } else if constexpr (std::is_same_v<T, bool>) {
                     return v ? "True" : "False";
                 } else if constexpr (std::is_same_v<T, std::nullptr_t>) {
                     return "None";
+                } else if constexpr (std::is_same_v<T, std::shared_ptr<Function>>) {
+                    return "<function>";
                 }
                 return "unknown";
             }, args[i]);

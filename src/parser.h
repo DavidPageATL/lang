@@ -37,6 +37,7 @@ enum class NodeType {
     CLASS_DEF_STMT,
     IMPORT_STMT,
     FROM_IMPORT_STMT,
+    TRY_STMT,
     
     // Program
     PROGRAM
@@ -248,6 +249,27 @@ struct ReturnStatement : public Statement {
         : Statement(NodeType::RETURN_STMT, l, c), value(std::move(val)) {}
 };
 
+// Exception handler for try/except
+struct ExceptClause {
+    std::string exception_type; // Optional exception type (empty means catch all)
+    std::string variable_name;  // Optional variable to bind the exception (empty if not used)
+    std::unique_ptr<BlockStatement> body;
+    
+    ExceptClause(const std::string& type = "", const std::string& var = "", 
+                 std::unique_ptr<BlockStatement> b = nullptr)
+        : exception_type(type), variable_name(var), body(std::move(b)) {}
+};
+
+struct TryStatement : public Statement {
+    std::unique_ptr<BlockStatement> try_body;
+    std::vector<ExceptClause> except_clauses;
+    
+    TryStatement(std::unique_ptr<BlockStatement> try_block, 
+                 std::vector<ExceptClause> excepts, int l = 0, int c = 0)
+        : Statement(NodeType::TRY_STMT, l, c), try_body(std::move(try_block)), 
+          except_clauses(std::move(excepts)) {}
+};
+
 // Program node
 struct Program : public ASTNode {
     std::vector<std::unique_ptr<Statement>> statements;
@@ -289,6 +311,7 @@ private:
     std::unique_ptr<Statement> classDefStatement();
     std::unique_ptr<Statement> importStatement();
     std::unique_ptr<Statement> fromImportStatement();
+    std::unique_ptr<Statement> tryStatement();
     std::unique_ptr<Statement> returnStatement();
     std::unique_ptr<BlockStatement> blockStatement();
     

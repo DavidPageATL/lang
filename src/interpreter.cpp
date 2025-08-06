@@ -429,7 +429,7 @@ Value Interpreter::evaluate(const Expression& expr) {
                         if (isString(builtin_val)) {
                             std::string builtin_str = getString(builtin_val);
                             if (builtin_str == func_name) {
-                                // Handle built-in print function specifically
+                                // Handle built-in print function
                                 if (builtin_name == "print") {
                                     for (size_t i = 0; i < arguments.size(); ++i) {
                                         if (i > 0) std::cout << " ";
@@ -437,6 +437,31 @@ Value Interpreter::evaluate(const Expression& expr) {
                                     }
                                     std::cout << std::endl;
                                     return makeValue(nullptr);
+                                }
+                                // Handle built-in raise function
+                                else if (builtin_name == "raise") {
+                                    if (arguments.empty()) {
+                                        throw RuntimeException("Exception", makeValue(nullptr), "");
+                                    } else if (arguments.size() == 1) {
+                                        // raise("message") - throws a generic exception with message
+                                        if (isString(arguments[0])) {
+                                            throw RuntimeException("Exception", arguments[0], getString(arguments[0]));
+                                        } else {
+                                            throw RuntimeException("Exception", arguments[0], valueToString(arguments[0]));
+                                        }
+                                    } else if (arguments.size() == 2) {
+                                        // raise("ExceptionType", "message") - throws specific exception type
+                                        if (!isString(arguments[0])) {
+                                            throw std::runtime_error("First argument to raise() must be exception type (string)");
+                                        }
+                                        std::string exc_type = getString(arguments[0]);
+                                        std::string message = isString(arguments[1]) ? getString(arguments[1]) : valueToString(arguments[1]);
+                                        throw RuntimeException(exc_type, arguments[1], message);
+                                    } else {
+                                        throw std::runtime_error("raise() takes 0, 1, or 2 arguments");
+                                    }
+                                    
+                                    return makeValue(nullptr); // Never reached
                                 }
                             }
                         }
@@ -632,6 +657,11 @@ void Interpreter::execute(const Statement& stmt) {
             break;
         }
         
+        case NodeType::TRY_STMT: {
+            executeTry(static_cast<const TryStatement&>(stmt));
+            break;
+        }
+        
         default:
             throw std::runtime_error("Unknown statement type");
     }
@@ -798,6 +828,12 @@ void Interpreter::setupBuiltins() {
         std::cout << std::endl;
         return makeValue(nullptr);
     });
+    
+    // Raise function for throwing exceptions
+    globals->defineBuiltin("raise", [](const std::vector<Value>& args) -> Value {
+        // This lambda is not actually used, the logic is in the function call handler
+        return makeValue(nullptr);
+    });
 }
 
 // New expression evaluation methods
@@ -953,6 +989,63 @@ void Interpreter::executeFromImport(const FromImportStatement& stmt) {
             environment->define(name, value);
         } catch (const std::runtime_error&) {
             throw std::runtime_error("Cannot import '" + import_name + "' from module '" + stmt.module_name + "'");
+        }
+    }
+}
+
+void Interpreter::executeTry(const TryStatement& stmt) {
+    try {
+        // Execute the try block
+        executeBlock(stmt.try_body->statements, environment);
+    } catch (const RuntimeException& e) {
+        // Handle user-defined exceptions
+        bool handled = false;
+        
+        for (const auto& except_clause : stmt.except_clauses) {
+            // If no exception type specified, catch all
+            if (except_clause.exception_type.empty() || 
+                except_clause.exception_type == e.exception_type) {
+                
+                // If a variable name is specified, bind the exception to it
+                if (!except_clause.variable_name.empty()) {
+                    environment->define(except_clause.variable_name, e.exception_value);
+                }
+                
+                // Execute the except block
+                executeBlock(except_clause.body->statements, environment);
+                handled = true;
+                break;
+            }
+        }
+        
+        // If no except clause handled it, re-throw
+        if (!handled) {
+            throw;
+        }
+    } catch (const std::runtime_error& e) {
+        // Handle built-in runtime errors as generic exceptions
+        bool handled = false;
+        
+        for (const auto& except_clause : stmt.except_clauses) {
+            // If no exception type specified or if it's a generic RuntimeError
+            if (except_clause.exception_type.empty() || 
+                except_clause.exception_type == "RuntimeError") {
+                
+                // If a variable name is specified, bind the exception message to it
+                if (!except_clause.variable_name.empty()) {
+                    environment->define(except_clause.variable_name, makeValue(std::string(e.what())));
+                }
+                
+                // Execute the except block
+                executeBlock(except_clause.body->statements, environment);
+                handled = true;
+                break;
+            }
+        }
+        
+        // If no except clause handled it, re-throw
+        if (!handled) {
+            throw;
         }
     }
 }

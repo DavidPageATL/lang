@@ -245,7 +245,7 @@ This makes it easy to debug and understand how your Python-like code is being pr
 - ~~Function definitions (`def` statements)~~ ✅ **Completed**
 - ~~Lists and dictionaries~~ ✅ **Completed**
 - ~~For loops (`for item in iterable`)~~ ✅ **Completed**
-- Classes and objects
-- Import system
-- Error handling (`try`/`except`)
+- ~~Classes and objects~~ ✅ **Completed**
+- ~~Import system~~ ✅ **Completed**
+- ~~Error handling (`try`/`except`)~~ ✅ **Completed**
 - More built-in functions (len, range, etc.)

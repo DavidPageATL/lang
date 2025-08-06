@@ -277,6 +277,8 @@ TokenType Lexer::identifierType(const std::string& text) {
         {"import", TokenType::IMPORT},
         {"from", TokenType::FROM},
         {"as", TokenType::AS},
+        {"try", TokenType::TRY},
+        {"except", TokenType::EXCEPT},
         {"True", TokenType::TRUE},
         {"False", TokenType::FALSE},
         {"None", TokenType::NONE},

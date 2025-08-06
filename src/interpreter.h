@@ -36,6 +36,17 @@ public:
     ReturnException(Value v) : std::runtime_error("return"), value(v) {}
 };
 
+// Runtime exception for user-defined exceptions
+class RuntimeException : public std::runtime_error {
+public:
+    std::string exception_type;
+    Value exception_value;
+    
+    RuntimeException(const std::string& type, Value value = nullptr, const std::string& message = "")
+        : std::runtime_error(message.empty() ? type : message), 
+          exception_type(type), exception_value(value) {}
+};
+
 // Built-in function type
 using BuiltinFunction = std::function<Value(const std::vector<Value>&)>;
 
@@ -157,6 +168,7 @@ private:
     void executeClassDef(const ClassDefStatement& stmt);
     void executeImport(const ImportStatement& stmt);
     void executeFromImport(const FromImportStatement& stmt);
+    void executeTry(const TryStatement& stmt);
     
     // Helper methods
     bool isTruthy(const Value& value);

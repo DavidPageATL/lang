@@ -99,6 +99,7 @@ std::unique_ptr<Statement> Parser::statement() {
     if (match({TokenType::CLASS})) return classDefStatement();
     if (match({TokenType::IMPORT})) return importStatement();
     if (match({TokenType::FROM})) return fromImportStatement();
+    if (match({TokenType::TRY})) return tryStatement();
     if (match({TokenType::RETURN})) return returnStatement();
     
     // Check for assignment (both simple and attribute)
@@ -326,6 +327,48 @@ std::unique_ptr<Statement> Parser::returnStatement() {
     }
     
     return std::make_unique<ReturnStatement>(std::move(value));
+}
+
+std::unique_ptr<Statement> Parser::tryStatement() {
+    // Parse try block
+    consume(TokenType::COLON, "Expected ':' after 'try'");
+    consume(TokenType::NEWLINE, "Expected newline after ':'");
+    consume(TokenType::INDENT, "Expected indentation after try statement");
+    auto try_body = blockStatement();
+    
+    // Parse except clauses
+    std::vector<ExceptClause> except_clauses;
+    
+    while (match({TokenType::EXCEPT})) {
+        std::string exception_type = "";
+        std::string variable_name = "";
+        
+        // Check if there's an exception type specified
+        if (check(TokenType::IDENTIFIER)) {
+            exception_type = advance().value;
+            
+            // Check if there's a variable binding (as variable)
+            if (match({TokenType::AS})) {
+                if (!check(TokenType::IDENTIFIER)) {
+                    throw std::runtime_error("Expected variable name after 'as'");
+                }
+                variable_name = advance().value;
+            }
+        }
+        
+        consume(TokenType::COLON, "Expected ':' after except clause");
+        consume(TokenType::NEWLINE, "Expected newline after ':'");
+        consume(TokenType::INDENT, "Expected indentation after except clause");
+        auto except_body = blockStatement();
+        
+        except_clauses.emplace_back(exception_type, variable_name, std::move(except_body));
+    }
+    
+    if (except_clauses.empty()) {
+        throw std::runtime_error("Try statement must have at least one except clause");
+    }
+    
+    return std::make_unique<TryStatement>(std::move(try_body), std::move(except_clauses));
 }
 
 std::unique_ptr<BlockStatement> Parser::blockStatement() {

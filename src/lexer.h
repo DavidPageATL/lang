@@ -21,6 +21,8 @@ enum class TokenType {
     IMPORT,
     FROM,
     AS,
+    TRY,
+    EXCEPT,
     TRUE,
     FALSE,
     NONE,

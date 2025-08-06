@@ -4,6 +4,128 @@
 #include <sstream>
 #include <cmath>
 
+// Convenience functions for creating values
+Value makeValue(double d) {
+    return std::make_shared<ValueWrapper>(d);
+}
+
+Value makeValue(const std::string& s) {
+    return std::make_shared<ValueWrapper>(s);
+}
+
+Value makeValue(bool b) {
+    return std::make_shared<ValueWrapper>(b);
+}
+
+Value makeValue(std::nullptr_t) {
+    return std::make_shared<ValueWrapper>(nullptr);
+}
+
+Value makeValue(std::shared_ptr<Function> f) {
+    return std::make_shared<ValueWrapper>(f);
+}
+
+Value makeValue(const ListType& l) {
+    return std::make_shared<ValueWrapper>(l);
+}
+
+Value makeValue(const DictType& d) {
+    return std::make_shared<ValueWrapper>(d);
+}
+
+// Helper functions for value access
+bool isNumber(const Value& v) {
+    return std::holds_alternative<double>(v->value);
+}
+
+bool isString(const Value& v) {
+    return std::holds_alternative<std::string>(v->value);
+}
+
+bool isBool(const Value& v) {
+    return std::holds_alternative<bool>(v->value);
+}
+
+bool isNone(const Value& v) {
+    return std::holds_alternative<std::nullptr_t>(v->value);
+}
+
+bool isFunction(const Value& v) {
+    return std::holds_alternative<std::shared_ptr<Function>>(v->value);
+}
+
+bool isList(const Value& v) {
+    return std::holds_alternative<ListType>(v->value);
+}
+
+bool isDict(const Value& v) {
+    return std::holds_alternative<DictType>(v->value);
+}
+
+double getNumber(const Value& v) {
+    return std::get<double>(v->value);
+}
+
+std::string getString(const Value& v) {
+    return std::get<std::string>(v->value);
+}
+
+bool getBool(const Value& v) {
+    return std::get<bool>(v->value);
+}
+
+std::shared_ptr<Function> getFunction(const Value& v) {
+    return std::get<std::shared_ptr<Function>>(v->value);
+}
+
+ListType& getList(const Value& v) {
+    return std::get<ListType>(v->value);
+}
+
+DictType& getDict(const Value& v) {
+    return std::get<DictType>(v->value);
+}
+
+// Convert value to string for printing
+std::string valueToString(const Value& v) {
+    if (isNumber(v)) {
+        double num = getNumber(v);
+        if (num == std::floor(num)) {
+            return std::to_string(static_cast<int>(num));
+        }
+        return std::to_string(num);
+    } else if (isString(v)) {
+        return getString(v);
+    } else if (isBool(v)) {
+        return getBool(v) ? "True" : "False";
+    } else if (isNone(v)) {
+        return "None";
+    } else if (isFunction(v)) {
+        return "<function>";
+    } else if (isList(v)) {
+        std::string result = "[";
+        const auto& list = getList(v);
+        for (size_t i = 0; i < list.size(); ++i) {
+            if (i > 0) result += ", ";
+            result += valueToString(list[i]);
+        }
+        result += "]";
+        return result;
+    } else if (isDict(v)) {
+        std::string result = "{";
+        const auto& dict = getDict(v);
+        bool first = true;
+        for (const auto& pair : dict) {
+            if (!first) result += ", ";
+            result += "'" + pair.first + "': " + valueToString(pair.second);
+            first = false;
+        }
+        result += "}";
+        return result;
+    }
+    return "<unknown>";
+}
+
 Environment::Environment(std::shared_ptr<Environment> parent) : parent(parent) {}
 
 void Environment::define(const std::string& name, const Value& value) {
@@ -12,7 +134,7 @@ void Environment::define(const std::string& name, const Value& value) {
 
 void Environment::defineBuiltin(const std::string& name, BuiltinFunction func) {
     // For simplicity, store builtin function names as special string values
-    variables[name] = std::string("builtin:" + name);
+    variables[name] = makeValue(std::string("builtin:" + name));
 }
 
 Value Environment::get(const std::string& name) {
@@ -65,17 +187,21 @@ Value Interpreter::evaluate(const Expression& expr) {
     switch (expr.type) {
         case NodeType::NUMBER_EXPR: {
             const auto& num_expr = static_cast<const NumberExpression&>(expr);
-            return num_expr.value;
+            return makeValue(num_expr.value);
         }
         
         case NodeType::STRING_EXPR: {
             const auto& str_expr = static_cast<const StringExpression&>(expr);
-            return str_expr.value;
+            return makeValue(str_expr.value);
         }
         
         case NodeType::BOOLEAN_EXPR: {
             const auto& bool_expr = static_cast<const BooleanExpression&>(expr);
-            return bool_expr.value;
+            return makeValue(bool_expr.value);
+        }
+        
+        case NodeType::NONE_EXPR: {
+            return makeValue(nullptr);
         }
         
         case NodeType::IDENTIFIER_EXPR: {
@@ -96,6 +222,18 @@ Value Interpreter::evaluate(const Expression& expr) {
             return performUnaryOp(un_expr.operator_type, operand);
         }
         
+        case NodeType::LIST_EXPR: {
+            return evaluateListExpr(static_cast<const ListExpression&>(expr));
+        }
+        
+        case NodeType::DICT_EXPR: {
+            return evaluateDictExpr(static_cast<const DictExpression&>(expr));
+        }
+        
+        case NodeType::INDEX_EXPR: {
+            return evaluateIndexExpr(static_cast<const IndexExpression&>(expr));
+        }
+        
         case NodeType::CALL_EXPR: {
             const auto& call_expr = static_cast<const CallExpression&>(expr);
             Value callee = evaluate(*call_expr.callee);
@@ -106,8 +244,8 @@ Value Interpreter::evaluate(const Expression& expr) {
             }
             
             // Handle user-defined functions
-            if (std::holds_alternative<std::shared_ptr<Function>>(callee)) {
-                auto function = std::get<std::shared_ptr<Function>>(callee);
+            if (isFunction(callee)) {
+                auto function = getFunction(callee);
                 
                 // Check argument count
                 if (arguments.size() != function->parameters.size()) {
@@ -127,7 +265,7 @@ Value Interpreter::evaluate(const Expression& expr) {
                 std::shared_ptr<Environment> previous = environment;
                 environment = func_env;
                 
-                Value result = nullptr;
+                Value result = makeValue(nullptr);
                 try {
                     for (const auto& stmt : function->body->statements) {
                         execute(*stmt);
@@ -144,15 +282,15 @@ Value Interpreter::evaluate(const Expression& expr) {
             }
             
             // Handle builtin functions
-            if (std::holds_alternative<std::string>(callee)) {
-                std::string func_name = std::get<std::string>(callee);
+            if (isString(callee)) {
+                std::string func_name = getString(callee);
                 if (func_name.substr(0, 8) == "builtin:") {
                     std::string builtin_name = func_name.substr(8);
                     // Try to get the builtin function from the global environment
                     try {
                         Value builtin_val = globals->get(builtin_name);
-                        if (std::holds_alternative<std::string>(builtin_val)) {
-                            std::string builtin_str = std::get<std::string>(builtin_val);
+                        if (isString(builtin_val)) {
+                            std::string builtin_str = getString(builtin_val);
                             if (builtin_str == func_name) {
                                 // Handle built-in print function specifically
                                 if (builtin_name == "print") {
@@ -161,7 +299,7 @@ Value Interpreter::evaluate(const Expression& expr) {
                                         std::cout << valueToString(arguments[i]);
                                     }
                                     std::cout << std::endl;
-                                    return nullptr;
+                                    return makeValue(nullptr);
                                 }
                             }
                         }
@@ -246,7 +384,7 @@ void Interpreter::execute(const Statement& stmt) {
             );
             
             // Define the function in the current environment
-            environment->define(func_stmt.name, function);
+            environment->define(func_stmt.name, makeValue(function));
             break;
         }
         
@@ -279,30 +417,6 @@ void Interpreter::executeBlock(const std::vector<std::unique_ptr<Statement>>& st
     environment = previous;
 }
 
-std::string Interpreter::valueToString(const Value& value) {
-    return std::visit([](const auto& v) -> std::string {
-        using T = std::decay_t<decltype(v)>;
-        if constexpr (std::is_same_v<T, double>) {
-            // Format numbers without unnecessary decimal places
-            double val = v;
-            if (val == std::floor(val)) {
-                return std::to_string(static_cast<int>(val));
-            } else {
-                return std::to_string(val);
-            }
-        } else if constexpr (std::is_same_v<T, std::string>) {
-            return v;
-        } else if constexpr (std::is_same_v<T, bool>) {
-            return v ? "True" : "False";
-        } else if constexpr (std::is_same_v<T, std::nullptr_t>) {
-            return "None";
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<Function>>) {
-            return "<function>";
-        }
-        return "unknown";
-    }, value);
-}
-
 bool Interpreter::isTruthy(const Value& value) {
     return std::visit([](const auto& v) -> bool {
         using T = std::decay_t<decltype(v)>;
@@ -316,81 +430,97 @@ bool Interpreter::isTruthy(const Value& value) {
             return !v.empty();
         } else if constexpr (std::is_same_v<T, std::shared_ptr<Function>>) {
             return true; // Functions are always truthy
+        } else if constexpr (std::is_same_v<T, ListType>) {
+            return !v.empty(); // Empty lists are falsy
+        } else if constexpr (std::is_same_v<T, DictType>) {
+            return !v.empty(); // Empty dicts are falsy
         }
         return true;
-    }, value);
+    }, value->value);
 }
 
 bool Interpreter::isEqual(const Value& a, const Value& b) {
-    return a == b;
+    if (a->value.index() != b->value.index()) {
+        return false; // Different types are not equal
+    }
+    
+    return std::visit([&b](const auto& a_val) -> bool {
+        using T = std::decay_t<decltype(a_val)>;
+        if constexpr (std::is_same_v<T, ListType> || std::is_same_v<T, DictType>) {
+            // For now, container equality is reference equality
+            return &a_val == &std::get<T>(b->value);
+        } else {
+            return a_val == std::get<T>(b->value);
+        }
+    }, a->value);
 }
 
 Value Interpreter::performBinaryOp(TokenType op, const Value& left, const Value& right) {
     switch (op) {
         case TokenType::PLUS:
-            if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                return std::get<double>(left) + std::get<double>(right);
+            if (isNumber(left) && isNumber(right)) {
+                return makeValue(getNumber(left) + getNumber(right));
             }
-            if (std::holds_alternative<std::string>(left) && std::holds_alternative<std::string>(right)) {
-                return std::get<std::string>(left) + std::get<std::string>(right);
+            if (isString(left) && isString(right)) {
+                return makeValue(getString(left) + getString(right));
             }
             throw std::runtime_error("Invalid operands for +");
             
         case TokenType::MINUS:
-            if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                return std::get<double>(left) - std::get<double>(right);
+            if (isNumber(left) && isNumber(right)) {
+                return makeValue(getNumber(left) - getNumber(right));
             }
             throw std::runtime_error("Invalid operands for -");
             
         case TokenType::MULTIPLY:
-            if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                return std::get<double>(left) * std::get<double>(right);
+            if (isNumber(left) && isNumber(right)) {
+                return makeValue(getNumber(left) * getNumber(right));
             }
             throw std::runtime_error("Invalid operands for *");
             
         case TokenType::DIVIDE:
-            if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                double r = std::get<double>(right);
+            if (isNumber(left) && isNumber(right)) {
+                double r = getNumber(right);
                 if (r == 0) throw std::runtime_error("Division by zero");
-                return std::get<double>(left) / r;
+                return makeValue(getNumber(left) / r);
             }
             throw std::runtime_error("Invalid operands for /");
             
         case TokenType::EQUAL:
-            return isEqual(left, right);
+            return makeValue(isEqual(left, right));
             
         case TokenType::NOT_EQUAL:
-            return !isEqual(left, right);
+            return makeValue(!isEqual(left, right));
             
         case TokenType::LESS:
-            if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                return std::get<double>(left) < std::get<double>(right);
+            if (isNumber(left) && isNumber(right)) {
+                return makeValue(getNumber(left) < getNumber(right));
             }
             throw std::runtime_error("Invalid operands for <");
             
         case TokenType::LESS_EQUAL:
-            if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                return std::get<double>(left) <= std::get<double>(right);
+            if (isNumber(left) && isNumber(right)) {
+                return makeValue(getNumber(left) <= getNumber(right));
             }
             throw std::runtime_error("Invalid operands for <=");
             
         case TokenType::GREATER:
-            if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                return std::get<double>(left) > std::get<double>(right);
+            if (isNumber(left) && isNumber(right)) {
+                return makeValue(getNumber(left) > getNumber(right));
             }
             throw std::runtime_error("Invalid operands for >");
             
         case TokenType::GREATER_EQUAL:
-            if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                return std::get<double>(left) >= std::get<double>(right);
+            if (isNumber(left) && isNumber(right)) {
+                return makeValue(getNumber(left) >= getNumber(right));
             }
             throw std::runtime_error("Invalid operands for >=");
             
         case TokenType::AND:
-            return isTruthy(left) && isTruthy(right);
+            return makeValue(isTruthy(left) && isTruthy(right));
             
         case TokenType::OR:
-            return isTruthy(left) || isTruthy(right);
+            return makeValue(isTruthy(left) || isTruthy(right));
             
         default:
             throw std::runtime_error("Unknown binary operator");
@@ -400,13 +530,13 @@ Value Interpreter::performBinaryOp(TokenType op, const Value& left, const Value&
 Value Interpreter::performUnaryOp(TokenType op, const Value& operand) {
     switch (op) {
         case TokenType::MINUS:
-            if (std::holds_alternative<double>(operand)) {
-                return -std::get<double>(operand);
+            if (isNumber(operand)) {
+                return makeValue(-getNumber(operand));
             }
             throw std::runtime_error("Invalid operand for unary -");
             
         case TokenType::NOT:
-            return !isTruthy(operand);
+            return makeValue(!isTruthy(operand));
             
         default:
             throw std::runtime_error("Unknown unary operator");
@@ -418,28 +548,75 @@ void Interpreter::setupBuiltins() {
     globals->defineBuiltin("print", [](const std::vector<Value>& args) -> Value {
         for (size_t i = 0; i < args.size(); ++i) {
             if (i > 0) std::cout << " ";
-            std::cout << std::visit([](const auto& v) -> std::string {
-                using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_same_v<T, double>) {
-                    double val = v;
-                    if (val == std::floor(val)) {
-                        return std::to_string(static_cast<int>(val));
-                    } else {
-                        return std::to_string(val);
-                    }
-                } else if constexpr (std::is_same_v<T, std::string>) {
-                    return v;
-                } else if constexpr (std::is_same_v<T, bool>) {
-                    return v ? "True" : "False";
-                } else if constexpr (std::is_same_v<T, std::nullptr_t>) {
-                    return "None";
-                } else if constexpr (std::is_same_v<T, std::shared_ptr<Function>>) {
-                    return "<function>";
-                }
-                return "unknown";
-            }, args[i]);
+            std::cout << valueToString(args[i]);
         }
         std::cout << std::endl;
-        return nullptr;
+        return makeValue(nullptr);
     });
+}
+
+// New expression evaluation methods
+Value Interpreter::evaluateListExpr(const ListExpression& expr) {
+    ListType list;
+    for (const auto& elem : expr.elements) {
+        list.push_back(evaluate(*elem));
+    }
+    return makeValue(list);
+}
+
+Value Interpreter::evaluateDictExpr(const DictExpression& expr) {
+    DictType dict;
+    for (const auto& pair : expr.pairs) {
+        Value key = evaluate(*pair.first);
+        Value value = evaluate(*pair.second);
+        
+        // Keys must be strings for now
+        if (!isString(key)) {
+            throw std::runtime_error("Dictionary keys must be strings");
+        }
+        
+        dict[getString(key)] = value;
+    }
+    return makeValue(dict);
+}
+
+Value Interpreter::evaluateIndexExpr(const IndexExpression& expr) {
+    Value object = evaluate(*expr.object);
+    Value index = evaluate(*expr.index);
+    
+    if (isList(object)) {
+        if (!isNumber(index)) {
+            throw std::runtime_error("List indices must be integers");
+        }
+        
+        auto& list = getList(object);
+        int idx = static_cast<int>(getNumber(index));
+        
+        // Handle negative indices
+        if (idx < 0) {
+            idx += list.size();
+        }
+        
+        if (idx < 0 || idx >= static_cast<int>(list.size())) {
+            throw std::runtime_error("List index out of range");
+        }
+        
+        return list[idx];
+    } else if (isDict(object)) {
+        if (!isString(index)) {
+            throw std::runtime_error("Dictionary keys must be strings");
+        }
+        
+        auto& dict = getDict(object);
+        std::string key = getString(index);
+        
+        auto it = dict.find(key);
+        if (it == dict.end()) {
+            throw std::runtime_error("Key '" + key + "' not found in dictionary");
+        }
+        
+        return it->second;
+    } else {
+        throw std::runtime_error("Object is not subscriptable");
+    }
 }

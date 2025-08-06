@@ -330,6 +330,10 @@ std::unique_ptr<Expression> Parser::call() {
             auto args = arguments();
             consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments");
             expr = std::make_unique<CallExpression>(std::move(expr), std::move(args));
+        } else if (match({TokenType::LEFT_BRACKET})) {
+            auto index = expression();
+            consume(TokenType::RIGHT_BRACKET, "Expected ']' after index");
+            expr = std::make_unique<IndexExpression>(std::move(expr), std::move(index));
         } else {
             break;
         }
@@ -345,6 +349,10 @@ std::unique_ptr<Expression> Parser::primary() {
     
     if (match({TokenType::FALSE})) {
         return std::make_unique<BooleanExpression>(false);
+    }
+    
+    if (match({TokenType::NONE})) {
+        return std::make_unique<NoneExpression>();
     }
     
     if (match({TokenType::NUMBER})) {
@@ -364,6 +372,37 @@ std::unique_ptr<Expression> Parser::primary() {
         auto expr = expression();
         consume(TokenType::RIGHT_PAREN, "Expected ')' after expression");
         return expr;
+    }
+    
+    if (match({TokenType::LEFT_BRACKET})) {
+        // Parse list literal
+        std::vector<std::unique_ptr<Expression>> elements;
+        
+        if (!check(TokenType::RIGHT_BRACKET)) {
+            do {
+                elements.push_back(expression());
+            } while (match({TokenType::COMMA}));
+        }
+        
+        consume(TokenType::RIGHT_BRACKET, "Expected ']' after list elements");
+        return std::make_unique<ListExpression>(std::move(elements));
+    }
+    
+    if (match({TokenType::LEFT_BRACE})) {
+        // Parse dictionary literal
+        std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> pairs;
+        
+        if (!check(TokenType::RIGHT_BRACE)) {
+            do {
+                auto key = expression();
+                consume(TokenType::COLON, "Expected ':' after dictionary key");
+                auto value = expression();
+                pairs.emplace_back(std::move(key), std::move(value));
+            } while (match({TokenType::COMMA}));
+        }
+        
+        consume(TokenType::RIGHT_BRACE, "Expected '}' after dictionary pairs");
+        return std::make_unique<DictExpression>(std::move(pairs));
     }
     
     throw std::runtime_error("Expected expression at line " + std::to_string(peek().line));

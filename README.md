@@ -7,11 +7,14 @@ A C++ implementation of a lexer, parser, and interpreter for a Python-like progr
 ### Language Support
 - **Variables and Assignment**: `x = 10`, `name = "Alice"`
 - **Data Types**: Numbers (int/float), strings, booleans (`True`/`False`), `None`
+- **Collections**: Lists (`[1, 2, 3]`) and dictionaries (`{"key": "value"}`)
+- **Indexing**: List and dictionary access (`list[0]`, `dict["key"]`)
 - **Arithmetic Operations**: `+`, `-`, `*`, `/`, `%`, `**` (power)
 - **Comparison Operations**: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - **Logical Operations**: `and`, `or`, `not`
 - **Control Flow**: `if`/`elif`/`else` statements, `while` loops
-- **Function Calls**: Built-in `print()` function
+- **Function Definitions**: `def` statements with parameters, return values, and closures
+- **Function Calls**: Built-in `print()` function and user-defined functions
 - **Comments**: `# This is a comment`
 - **Indentation-based Blocks**: Python-style indentation
 
@@ -117,6 +120,46 @@ while count <= 5:
 print("\nProgram completed!")
 ```
 
+### Lists and Dictionaries Example (`lists_dicts_test.py`)
+```python
+# Lists
+numbers = [1, 2, 3, 4, 5]
+print("Numbers:", numbers)
+print("First:", numbers[0])
+print("Last:", numbers[-1])
+
+# Dictionaries
+person = {"name": "Alice", "age": 30, "city": "New York"}
+print("Person:", person)
+print("Name:", person["name"])
+
+# Mixed and nested structures
+mixed = [1, "hello", True, None]
+nested = [{"name": "Bob", "scores": [95, 87, 92]}]
+print("Mixed:", mixed)
+print("Nested:", nested)
+```
+
+### Function Definition Example (`advanced_functions.py`)
+```python
+def fibonacci(n):
+    if n <= 1:
+        return n
+    else:
+        return fibonacci(n - 1) + fibonacci(n - 2)
+
+def square(x):
+    return x * x
+
+def apply_twice(func, value):
+    result = func(value)
+    return func(result)
+
+# Usage
+print("Fibonacci(7):", fibonacci(7))
+print("Apply twice square(3):", apply_twice(square, 3))
+```
+
 ### Language Grammar (Simplified)
 
 ```
@@ -181,10 +224,10 @@ This makes it easy to debug and understand how your Python-like code is being pr
 
 ## Future Enhancements
 
-- Function definitions (`def` statements)
-- Lists and dictionaries
+- ~~Function definitions (`def` statements)~~ ✅ **Completed**
+- ~~Lists and dictionaries~~ ✅ **Completed**
 - For loops (`for item in iterable`)
 - Classes and objects
 - Import system
 - Error handling (`try`/`except`)
-- More built-in functions
+- More built-in functions (len, range, etc.)

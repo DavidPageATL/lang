@@ -14,10 +14,14 @@ enum class NodeType {
     NUMBER_EXPR,
     STRING_EXPR,
     BOOLEAN_EXPR,
+    NONE_EXPR,
     IDENTIFIER_EXPR,
     BINARY_EXPR,
     UNARY_EXPR,
     CALL_EXPR,
+    LIST_EXPR,
+    DICT_EXPR,
+    INDEX_EXPR,
     
     // Statements
     EXPRESSION_STMT,
@@ -66,6 +70,11 @@ struct BooleanExpression : public Expression {
         : Expression(NodeType::BOOLEAN_EXPR, l, c), value(v) {}
 };
 
+struct NoneExpression : public Expression {
+    NoneExpression(int l = 0, int c = 0)
+        : Expression(NodeType::NONE_EXPR, l, c) {}
+};
+
 struct IdentifierExpression : public Expression {
     std::string name;
     IdentifierExpression(const std::string& n, int l = 0, int c = 0)
@@ -95,6 +104,28 @@ struct CallExpression : public Expression {
     
     CallExpression(std::unique_ptr<Expression> c, std::vector<std::unique_ptr<Expression>> args, int l = 0, int col = 0)
         : Expression(NodeType::CALL_EXPR, l, col), callee(std::move(c)), arguments(std::move(args)) {}
+};
+
+struct ListExpression : public Expression {
+    std::vector<std::unique_ptr<Expression>> elements;
+    
+    ListExpression(std::vector<std::unique_ptr<Expression>> elems, int l = 0, int c = 0)
+        : Expression(NodeType::LIST_EXPR, l, c), elements(std::move(elems)) {}
+};
+
+struct DictExpression : public Expression {
+    std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> pairs;
+    
+    DictExpression(std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> p, int l = 0, int c = 0)
+        : Expression(NodeType::DICT_EXPR, l, c), pairs(std::move(p)) {}
+};
+
+struct IndexExpression : public Expression {
+    std::unique_ptr<Expression> object;
+    std::unique_ptr<Expression> index;
+    
+    IndexExpression(std::unique_ptr<Expression> obj, std::unique_ptr<Expression> idx, int l = 0, int c = 0)
+        : Expression(NodeType::INDEX_EXPR, l, c), object(std::move(obj)), index(std::move(idx)) {}
 };
 
 // Statement nodes

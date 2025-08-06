@@ -94,6 +94,7 @@ void Parser::synchronize() {
 std::unique_ptr<Statement> Parser::statement() {
     if (match({TokenType::IF})) return ifStatement();
     if (match({TokenType::WHILE})) return whileStatement();
+    if (match({TokenType::FOR})) return forStatement();
     if (match({TokenType::DEF})) return functionDefStatement();
     if (match({TokenType::RETURN})) return returnStatement();
     
@@ -164,6 +165,23 @@ std::unique_ptr<Statement> Parser::whileStatement() {
     auto body = blockStatement();
     
     return std::make_unique<WhileStatement>(std::move(condition), std::move(body));
+}
+
+std::unique_ptr<Statement> Parser::forStatement() {
+    // Expect: for <variable> in <iterable>:
+    consume(TokenType::IDENTIFIER, "Expected variable name after 'for'");
+    std::string variable = previous().value;
+    
+    consume(TokenType::IN, "Expected 'in' after for variable");
+    auto iterable = expression();
+    
+    consume(TokenType::COLON, "Expected ':' after for clause");
+    consume(TokenType::NEWLINE, "Expected newline after ':'");
+    consume(TokenType::INDENT, "Expected indentation after for statement");
+    
+    auto body = blockStatement();
+    
+    return std::make_unique<ForStatement>(variable, std::move(iterable), std::move(body));
 }
 
 std::unique_ptr<Statement> Parser::functionDefStatement() {

@@ -12,7 +12,7 @@ A C++ implementation of a lexer, parser, and interpreter for a Python-like progr
 - **Arithmetic Operations**: `+`, `-`, `*`, `/`, `%`, `**` (power)
 - **Comparison Operations**: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - **Logical Operations**: `and`, `or`, `not`
-- **Control Flow**: `if`/`elif`/`else` statements, `while` loops
+- **Control Flow**: `if`/`elif`/`else` statements, `while` loops, `for` loops (`for item in iterable`)
 - **Function Definitions**: `def` statements with parameters, return values, and closures
 - **Function Calls**: Built-in `print()` function and user-defined functions
 - **Comments**: `# This is a comment`
@@ -160,6 +160,24 @@ print("Fibonacci(7):", fibonacci(7))
 print("Apply twice square(3):", apply_twice(square, 3))
 ```
 
+### For Loop Example (`for_loops_test.py`)
+```python
+# Iterate over lists
+numbers = [1, 2, 3, 4, 5]
+for num in numbers:
+    print("Number:", num)
+
+# Iterate over dictionary keys
+person = {"name": "Alice", "age": 30}
+for key in person:
+    print("Key:", key, "Value:", person[key])
+
+# Nested loops with computations
+for i in [1, 2, 3, 4, 5]:
+    square = i * i
+    print("Square of", i, "is", square)
+```
+
 ### Language Grammar (Simplified)
 
 ```
@@ -226,7 +244,7 @@ This makes it easy to debug and understand how your Python-like code is being pr
 
 - ~~Function definitions (`def` statements)~~ ✅ **Completed**
 - ~~Lists and dictionaries~~ ✅ **Completed**
-- For loops (`for item in iterable`)
+- ~~For loops (`for item in iterable`)~~ ✅ **Completed**
 - Classes and objects
 - Import system
 - Error handling (`try`/`except`)

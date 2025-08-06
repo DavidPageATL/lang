@@ -364,6 +364,30 @@ void Interpreter::execute(const Statement& stmt) {
             break;
         }
         
+        case NodeType::FOR_STMT: {
+            const auto& for_stmt = static_cast<const ForStatement&>(stmt);
+            Value iterable = evaluate(*for_stmt.iterable);
+            
+            if (isList(iterable)) {
+                // Iterate over list
+                const auto& list = getList(iterable);
+                for (const auto& item : list) {
+                    environment->define(for_stmt.variable, item);
+                    executeBlock(for_stmt.body->statements, environment);
+                }
+            } else if (isDict(iterable)) {
+                // Iterate over dictionary keys
+                const auto& dict = getDict(iterable);
+                for (const auto& pair : dict) {
+                    environment->define(for_stmt.variable, makeValue(pair.first));
+                    executeBlock(for_stmt.body->statements, environment);
+                }
+            } else {
+                throw std::runtime_error("Object is not iterable");
+            }
+            break;
+        }
+        
         case NodeType::RETURN_STMT: {
             const auto& return_stmt = static_cast<const ReturnStatement&>(stmt);
             Value value = nullptr;
@@ -463,6 +487,13 @@ Value Interpreter::performBinaryOp(TokenType op, const Value& left, const Value&
             }
             if (isString(left) && isString(right)) {
                 return makeValue(getString(left) + getString(right));
+            }
+            if (isList(left) && isList(right)) {
+                // List concatenation
+                auto result = getList(left);
+                const auto& right_list = getList(right);
+                result.insert(result.end(), right_list.begin(), right_list.end());
+                return makeValue(result);
             }
             throw std::runtime_error("Invalid operands for +");
             

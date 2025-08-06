@@ -174,6 +174,15 @@ struct WhileStatement : public Statement {
         : Statement(NodeType::WHILE_STMT, l, c), condition(std::move(cond)), body(std::move(b)) {}
 };
 
+struct ForStatement : public Statement {
+    std::string variable;
+    std::unique_ptr<Expression> iterable;
+    std::unique_ptr<BlockStatement> body;
+    
+    ForStatement(const std::string& var, std::unique_ptr<Expression> iter, std::unique_ptr<BlockStatement> b, int l = 0, int c = 0)
+        : Statement(NodeType::FOR_STMT, l, c), variable(var), iterable(std::move(iter)), body(std::move(b)) {}
+};
+
 struct FunctionDefStatement : public Statement {
     std::string name;
     std::vector<std::string> parameters;
@@ -226,6 +235,7 @@ private:
     std::unique_ptr<Statement> assignmentStatement();
     std::unique_ptr<Statement> ifStatement();
     std::unique_ptr<Statement> whileStatement();
+    std::unique_ptr<Statement> forStatement();
     std::unique_ptr<Statement> functionDefStatement();
     std::unique_ptr<Statement> returnStatement();
     std::unique_ptr<BlockStatement> blockStatement();

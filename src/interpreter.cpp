@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <sstream>
 #include <cmath>
+#include <fstream>
+#include <filesystem>
 
 // Convenience functions for creating values
 Value makeValue(double d) {
@@ -39,6 +41,10 @@ Value makeValue(std::shared_ptr<Class> c) {
 
 Value makeValue(std::shared_ptr<ClassInstance> ci) {
     return std::make_shared<ValueWrapper>(ci);
+}
+
+Value makeValue(std::shared_ptr<Module> m) {
+    return std::make_shared<ValueWrapper>(m);
 }
 
 // Helper functions for value access
@@ -78,6 +84,10 @@ bool isClassInstance(const Value& v) {
     return std::holds_alternative<std::shared_ptr<ClassInstance>>(v->value);
 }
 
+bool isModule(const Value& v) {
+    return std::holds_alternative<std::shared_ptr<Module>>(v->value);
+}
+
 double getNumber(const Value& v) {
     return std::get<double>(v->value);
 }
@@ -108,6 +118,10 @@ std::shared_ptr<Class> getClass(const Value& v) {
 
 std::shared_ptr<ClassInstance> getClassInstance(const Value& v) {
     return std::get<std::shared_ptr<ClassInstance>>(v->value);
+}
+
+std::shared_ptr<Module> getModule(const Value& v) {
+    return std::get<std::shared_ptr<Module>>(v->value);
 }
 
 // Convert value to string for printing
@@ -152,8 +166,76 @@ std::string valueToString(const Value& v) {
     } else if (isClassInstance(v)) {
         auto instance = getClassInstance(v);
         return "<" + instance->classRef->name + " object>";
+    } else if (isModule(v)) {
+        auto module = getModule(v);
+        return "<module '" + module->name + "'>";
     }
     return "<unknown>";
+}
+
+// Load a module from file
+std::shared_ptr<Module> Interpreter::loadModule(const std::string& module_name) {
+    // Check if module is already in cache
+    auto it = module_cache.find(module_name);
+    if (it != module_cache.end()) {
+        return it->second;
+    }
+    
+    // Construct file path (look for .py file)
+    std::string file_path = module_name + ".py";
+    if (!std::filesystem::exists(file_path)) {
+        throw std::runtime_error("Module '" + module_name + "' not found");
+    }
+    
+    // Read file contents
+    std::ifstream file(file_path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open module file: " + file_path);
+    }
+    
+    std::string source;
+    std::string line;
+    while (std::getline(file, line)) {
+        source += line + "\n";
+    }
+    file.close();
+    
+    // Create module
+    auto module = std::make_shared<Module>();
+    module->name = module_name;
+    module->file_path = file_path;
+    module->module_env = std::make_shared<Environment>(globals);
+    
+    // Parse and execute module
+    try {
+        Lexer lexer(source);
+        auto tokens = lexer.tokenize();
+        
+        Parser parser(tokens);
+        auto program = parser.parse();
+        
+        // Store the AST in the module to keep it alive
+        module->ast = std::move(program);
+        
+        // Save current environment
+        auto saved_env = environment;
+        environment = module->module_env;
+        
+        // Execute module in its own environment
+        for (const auto& stmt : module->ast->statements) {
+            execute(*stmt);
+        }
+        
+        // Restore previous environment
+        environment = saved_env;
+        
+        // Cache the module
+        module_cache[module_name] = module;
+        
+        return module;
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Error loading module '" + module_name + "': " + e.what());
+    }
 }
 
 Environment::Environment(std::shared_ptr<Environment> parent) : parent(parent) {}
@@ -534,6 +616,16 @@ void Interpreter::execute(const Statement& stmt) {
             break;
         }
         
+        case NodeType::IMPORT_STMT: {
+            executeImport(static_cast<const ImportStatement&>(stmt));
+            break;
+        }
+        
+        case NodeType::FROM_IMPORT_STMT: {
+            executeFromImport(static_cast<const FromImportStatement&>(stmt));
+            break;
+        }
+        
         case NodeType::BLOCK_STMT: {
             const auto& block_stmt = static_cast<const BlockStatement&>(stmt);
             executeBlock(block_stmt.statements, environment);
@@ -777,7 +869,17 @@ Value Interpreter::evaluateIndexExpr(const IndexExpression& expr) {
 Value Interpreter::evaluateAttributeExpr(const AttributeExpression& expr) {
     Value object = evaluate(*expr.object);
     
-    if (isClassInstance(object)) {
+    if (isModule(object)) {
+        auto module = getModule(object);
+        
+        // Look up the attribute in the module's environment
+        try {
+            Value result = module->module_env->get(expr.attribute);
+            return result;
+        } catch (const std::runtime_error&) {
+            throw std::runtime_error("Module '" + module->name + "' has no attribute '" + expr.attribute + "'");
+        }
+    } else if (isClassInstance(object)) {
         auto instance = getClassInstance(object);
         
         // First check instance attributes
@@ -828,4 +930,29 @@ void Interpreter::executeClassDef(const ClassDefStatement& stmt) {
     
     // Define the class in the current environment
     environment->define(stmt.name, makeValue(cls));
+}
+
+void Interpreter::executeImport(const ImportStatement& stmt) {
+    // Load the module
+    auto module = loadModule(stmt.module_name);
+    
+    // Define the module in the current environment
+    std::string name = stmt.alias.empty() ? stmt.module_name : stmt.alias;
+    environment->define(name, makeValue(module));
+}
+
+void Interpreter::executeFromImport(const FromImportStatement& stmt) {
+    // Load the module
+    auto module = loadModule(stmt.module_name);
+    
+    // Import specific symbols from the module
+    for (const auto& [import_name, alias] : stmt.imports) {
+        try {
+            Value value = module->module_env->get(import_name);
+            std::string name = alias.empty() ? import_name : alias;
+            environment->define(name, value);
+        } catch (const std::runtime_error&) {
+            throw std::runtime_error("Cannot import '" + import_name + "' from module '" + stmt.module_name + "'");
+        }
+    }
 }

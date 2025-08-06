@@ -15,14 +15,15 @@ class Environment;
 struct Function;
 struct Class;
 struct ClassInstance;
+struct Module;
 using ListType = std::vector<std::shared_ptr<struct ValueWrapper>>;
 using DictType = std::map<std::string, std::shared_ptr<struct ValueWrapper>>;
 
 // Value wrapper for recursive types
 struct ValueWrapper {
-    std::variant<double, std::string, bool, std::nullptr_t, std::shared_ptr<Function>, ListType, DictType, std::shared_ptr<Class>, std::shared_ptr<ClassInstance>> value;
+    std::variant<double, std::string, bool, std::nullptr_t, std::shared_ptr<Function>, ListType, DictType, std::shared_ptr<Class>, std::shared_ptr<ClassInstance>, std::shared_ptr<Module>> value;
     
-    ValueWrapper(const std::variant<double, std::string, bool, std::nullptr_t, std::shared_ptr<Function>, ListType, DictType, std::shared_ptr<Class>, std::shared_ptr<ClassInstance>>& v) 
+    ValueWrapper(const std::variant<double, std::string, bool, std::nullptr_t, std::shared_ptr<Function>, ListType, DictType, std::shared_ptr<Class>, std::shared_ptr<ClassInstance>, std::shared_ptr<Module>>& v) 
         : value(v) {}
 };
 
@@ -48,6 +49,7 @@ Value makeValue(const ListType& l);
 Value makeValue(const DictType& d);
 Value makeValue(std::shared_ptr<Class> c);
 Value makeValue(std::shared_ptr<ClassInstance> ci);
+Value makeValue(std::shared_ptr<Module> m);
 
 // Helper functions for value access
 bool isNumber(const Value& v);
@@ -59,6 +61,7 @@ bool isList(const Value& v);
 bool isDict(const Value& v);
 bool isClass(const Value& v);
 bool isClassInstance(const Value& v);
+bool isModule(const Value& v);
 
 double getNumber(const Value& v);
 std::string getString(const Value& v);
@@ -68,6 +71,7 @@ ListType& getList(const Value& v);
 DictType& getDict(const Value& v);
 std::shared_ptr<Class> getClass(const Value& v);
 std::shared_ptr<ClassInstance> getClassInstance(const Value& v);
+std::shared_ptr<Module> getModule(const Value& v);
 
 // Convert value to string for printing
 std::string valueToString(const Value& v);
@@ -99,6 +103,17 @@ struct ClassInstance {
     ClassInstance(std::shared_ptr<Class> c) : classRef(c) {}
 };
 
+struct Module {
+    std::string name;
+    std::string file_path;
+    std::shared_ptr<Environment> module_env;
+    std::unique_ptr<Program> ast; // Store the parsed AST to keep it alive
+    
+    Module() = default;
+    Module(const std::string& n, const std::string& path, std::shared_ptr<Environment> env)
+        : name(n), file_path(path), module_env(env) {}
+};
+
 // Environment for variable storage
 class Environment {
 private:
@@ -120,6 +135,7 @@ class Interpreter {
 private:
     std::shared_ptr<Environment> globals;
     std::shared_ptr<Environment> environment;
+    std::unordered_map<std::string, std::shared_ptr<Module>> module_cache;
     
 public:
     Interpreter();
@@ -139,12 +155,15 @@ private:
     
     // Statement execution methods
     void executeClassDef(const ClassDefStatement& stmt);
+    void executeImport(const ImportStatement& stmt);
+    void executeFromImport(const FromImportStatement& stmt);
     
     // Helper methods
     bool isTruthy(const Value& value);
     bool isEqual(const Value& a, const Value& b);
     Value performBinaryOp(TokenType op, const Value& left, const Value& right);
     Value performUnaryOp(TokenType op, const Value& operand);
+    std::shared_ptr<Module> loadModule(const std::string& module_name);
     
     void setupBuiltins();
 };

@@ -35,6 +35,8 @@ enum class NodeType {
     RETURN_STMT,
     BLOCK_STMT,
     CLASS_DEF_STMT,
+    IMPORT_STMT,
+    FROM_IMPORT_STMT,
     
     // Program
     PROGRAM
@@ -223,6 +225,22 @@ struct ClassDefStatement : public Statement {
         : Statement(NodeType::CLASS_DEF_STMT, l, c), name(n), body(std::move(b)) {}
 };
 
+struct ImportStatement : public Statement {
+    std::string module_name;
+    std::string alias;  // empty if no "as" clause
+    
+    ImportStatement(const std::string& module, const std::string& as_name = "", int l = 0, int c = 0)
+        : Statement(NodeType::IMPORT_STMT, l, c), module_name(module), alias(as_name) {}
+};
+
+struct FromImportStatement : public Statement {
+    std::string module_name;
+    std::vector<std::pair<std::string, std::string>> imports;  // (name, alias) pairs
+    
+    FromImportStatement(const std::string& module, std::vector<std::pair<std::string, std::string>> imp, int l = 0, int c = 0)
+        : Statement(NodeType::FROM_IMPORT_STMT, l, c), module_name(module), imports(std::move(imp)) {}
+};
+
 struct ReturnStatement : public Statement {
     std::unique_ptr<Expression> value;
     
@@ -269,6 +287,8 @@ private:
     std::unique_ptr<Statement> forStatement();
     std::unique_ptr<Statement> functionDefStatement();
     std::unique_ptr<Statement> classDefStatement();
+    std::unique_ptr<Statement> importStatement();
+    std::unique_ptr<Statement> fromImportStatement();
     std::unique_ptr<Statement> returnStatement();
     std::unique_ptr<BlockStatement> blockStatement();
     

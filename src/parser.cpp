@@ -97,6 +97,8 @@ std::unique_ptr<Statement> Parser::statement() {
     if (match({TokenType::FOR})) return forStatement();
     if (match({TokenType::DEF})) return functionDefStatement();
     if (match({TokenType::CLASS})) return classDefStatement();
+    if (match({TokenType::IMPORT})) return importStatement();
+    if (match({TokenType::FROM})) return fromImportStatement();
     if (match({TokenType::RETURN})) return returnStatement();
     
     // Check for assignment (both simple and attribute)
@@ -250,6 +252,65 @@ std::unique_ptr<Statement> Parser::classDefStatement() {
     auto body = blockStatement();
     
     return std::make_unique<ClassDefStatement>(name.value, std::move(body));
+}
+
+std::unique_ptr<Statement> Parser::importStatement() {
+    // import module_name [as alias]
+    if (!check(TokenType::IDENTIFIER)) {
+        throw std::runtime_error("Expected module name after 'import'");
+    }
+    Token module_name = advance();
+    
+    std::string alias = "";
+    if (match({TokenType::AS})) {
+        if (!check(TokenType::IDENTIFIER)) {
+            throw std::runtime_error("Expected alias name after 'as'");
+        }
+        alias = advance().value;
+    }
+    
+    // Consume optional newline
+    if (check(TokenType::NEWLINE)) {
+        advance();
+    }
+    
+    return std::make_unique<ImportStatement>(module_name.value, alias);
+}
+
+std::unique_ptr<Statement> Parser::fromImportStatement() {
+    // from module_name import name1 [as alias1], name2 [as alias2], ...
+    if (!check(TokenType::IDENTIFIER)) {
+        throw std::runtime_error("Expected module name after 'from'");
+    }
+    Token module_name = advance();
+    
+    consume(TokenType::IMPORT, "Expected 'import' after module name");
+    
+    std::vector<std::pair<std::string, std::string>> imports;
+    
+    do {
+        if (!check(TokenType::IDENTIFIER)) {
+            throw std::runtime_error("Expected import name");
+        }
+        Token import_name = advance();
+        
+        std::string alias = "";
+        if (match({TokenType::AS})) {
+            if (!check(TokenType::IDENTIFIER)) {
+                throw std::runtime_error("Expected alias name after 'as'");
+            }
+            alias = advance().value;
+        }
+        
+        imports.push_back({import_name.value, alias});
+    } while (match({TokenType::COMMA}));
+    
+    // Consume optional newline
+    if (check(TokenType::NEWLINE)) {
+        advance();
+    }
+    
+    return std::make_unique<FromImportStatement>(module_name.value, std::move(imports));
 }
 
 std::unique_ptr<Statement> Parser::returnStatement() {

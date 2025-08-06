@@ -173,6 +173,37 @@ std::string valueToString(const Value& v) {
     return "<unknown>";
 }
 
+// Get the type name of a value
+std::string getTypeName(const Value& v) {
+    if (isNumber(v)) {
+        double num = getNumber(v);
+        if (num == std::floor(num)) {
+            return "int";
+        }
+        return "float";
+    } else if (isString(v)) {
+        return "str";
+    } else if (isBool(v)) {
+        return "bool";
+    } else if (isNone(v)) {
+        return "NoneType";
+    } else if (isFunction(v)) {
+        return "function";
+    } else if (isList(v)) {
+        return "list";
+    } else if (isDict(v)) {
+        return "dict";
+    } else if (isClass(v)) {
+        return "type";
+    } else if (isClassInstance(v)) {
+        auto instance = getClassInstance(v);
+        return instance->classRef->name;
+    } else if (isModule(v)) {
+        return "module";
+    }
+    return "unknown";
+}
+
 // Load a module from file
 std::shared_ptr<Module> Interpreter::loadModule(const std::string& module_name) {
     // Check if module is already in cache
@@ -424,49 +455,64 @@ Value Interpreter::evaluate(const Expression& expr) {
                 if (func_name.substr(0, 8) == "builtin:") {
                     std::string builtin_name = func_name.substr(8);
                     // Try to get the builtin function from the global environment
-                    try {
-                        Value builtin_val = globals->get(builtin_name);
-                        if (isString(builtin_val)) {
-                            std::string builtin_str = getString(builtin_val);
-                            if (builtin_str == func_name) {
-                                // Handle built-in print function
-                                if (builtin_name == "print") {
-                                    for (size_t i = 0; i < arguments.size(); ++i) {
-                                        if (i > 0) std::cout << " ";
-                                        std::cout << valueToString(arguments[i]);
-                                    }
-                                    std::cout << std::endl;
-                                    return makeValue(nullptr);
+                    Value builtin_val = globals->get(builtin_name);
+                    if (isString(builtin_val)) {
+                        std::string builtin_str = getString(builtin_val);
+                        if (builtin_str == func_name) {
+                            // Handle built-in print function
+                            if (builtin_name == "print") {
+                                for (size_t i = 0; i < arguments.size(); ++i) {
+                                    if (i > 0) std::cout << " ";
+                                    std::cout << valueToString(arguments[i]);
                                 }
-                                // Handle built-in raise function
-                                else if (builtin_name == "raise") {
-                                    if (arguments.empty()) {
-                                        throw RuntimeException("Exception", makeValue(nullptr), "");
-                                    } else if (arguments.size() == 1) {
-                                        // raise("message") - throws a generic exception with message
-                                        if (isString(arguments[0])) {
-                                            throw RuntimeException("Exception", arguments[0], getString(arguments[0]));
-                                        } else {
-                                            throw RuntimeException("Exception", arguments[0], valueToString(arguments[0]));
-                                        }
-                                    } else if (arguments.size() == 2) {
-                                        // raise("ExceptionType", "message") - throws specific exception type
-                                        if (!isString(arguments[0])) {
-                                            throw std::runtime_error("First argument to raise() must be exception type (string)");
-                                        }
-                                        std::string exc_type = getString(arguments[0]);
-                                        std::string message = isString(arguments[1]) ? getString(arguments[1]) : valueToString(arguments[1]);
-                                        throw RuntimeException(exc_type, arguments[1], message);
+                                std::cout << std::endl;
+                                return makeValue(nullptr);
+                            }
+                            // Handle built-in raise function
+                            else if (builtin_name == "raise") {
+                                if (arguments.empty()) {
+                                    throw RuntimeException("Exception", makeValue(nullptr), "");
+                                } else if (arguments.size() == 1) {
+                                    // raise("message") - throws a generic exception with message
+                                    if (isString(arguments[0])) {
+                                        throw RuntimeException("Exception", arguments[0], getString(arguments[0]));
                                     } else {
-                                        throw std::runtime_error("raise() takes 0, 1, or 2 arguments");
+                                        throw RuntimeException("Exception", arguments[0], valueToString(arguments[0]));
                                     }
-                                    
-                                    return makeValue(nullptr); // Never reached
+                                } else if (arguments.size() == 2) {
+                                    // raise("ExceptionType", "message") - throws specific exception type
+                                    if (!isString(arguments[0])) {
+                                        throw std::runtime_error("First argument to raise() must be exception type (string)");
+                                    }
+                                    std::string exc_type = getString(arguments[0]);
+                                    std::string message = isString(arguments[1]) ? getString(arguments[1]) : valueToString(arguments[1]);
+                                    throw RuntimeException(exc_type, arguments[1], message);
+                                } else {
+                                    throw std::runtime_error("raise() takes 0, 1, or 2 arguments");
+                                }
+                                
+                                return makeValue(nullptr); // Never reached
+                            }
+                            // Handle built-in len function
+                            else if (builtin_name == "len") {
+                                if (arguments.size() != 1) {
+                                    throw std::runtime_error("len() takes exactly one argument");
+                                }
+                                Value arg = arguments[0];
+                                if (isList(arg)) {
+                                    auto& list = getList(arg);
+                                    return makeValue(static_cast<double>(list.size()));
+                                } else if (isDict(arg)) {
+                                    auto& dict = getDict(arg);
+                                    return makeValue(static_cast<double>(dict.size()));
+                                } else if (isString(arg)) {
+                                    std::string str = getString(arg);
+                                    return makeValue(static_cast<double>(str.length()));
+                                } else {
+                                    throw std::runtime_error("object of type '" + getTypeName(arg) + "' has no len()");
                                 }
                             }
                         }
-                    } catch (...) {
-                        // Builtin not found, fall through to error
                     }
                 }
             }
@@ -832,6 +878,11 @@ void Interpreter::setupBuiltins() {
     // Raise function for throwing exceptions
     globals->defineBuiltin("raise", [](const std::vector<Value>& args) -> Value {
         // This lambda is not actually used, the logic is in the function call handler
+        return makeValue(nullptr);
+    });
+    
+    // Length function
+    globals->defineBuiltin("len", [](const std::vector<Value>& args) -> Value {
         return makeValue(nullptr);
     });
 }

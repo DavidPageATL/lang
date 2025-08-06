@@ -87,6 +87,10 @@ std::shared_ptr<Module> getModule(const Value& v);
 // Convert value to string for printing
 std::string valueToString(const Value& v);
 
+// Helper functions for built-ins
+std::string getTypeName(const Value& v);
+int compareValues(const Value& a, const Value& b);
+
 // Value type for the interpreter
 struct Function {
     std::vector<std::string> parameters;

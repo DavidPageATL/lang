@@ -33,6 +33,14 @@ Value makeValue(const DictType& d) {
     return std::make_shared<ValueWrapper>(d);
 }
 
+Value makeValue(std::shared_ptr<Class> c) {
+    return std::make_shared<ValueWrapper>(c);
+}
+
+Value makeValue(std::shared_ptr<ClassInstance> ci) {
+    return std::make_shared<ValueWrapper>(ci);
+}
+
 // Helper functions for value access
 bool isNumber(const Value& v) {
     return std::holds_alternative<double>(v->value);
@@ -62,6 +70,14 @@ bool isDict(const Value& v) {
     return std::holds_alternative<DictType>(v->value);
 }
 
+bool isClass(const Value& v) {
+    return std::holds_alternative<std::shared_ptr<Class>>(v->value);
+}
+
+bool isClassInstance(const Value& v) {
+    return std::holds_alternative<std::shared_ptr<ClassInstance>>(v->value);
+}
+
 double getNumber(const Value& v) {
     return std::get<double>(v->value);
 }
@@ -84,6 +100,14 @@ ListType& getList(const Value& v) {
 
 DictType& getDict(const Value& v) {
     return std::get<DictType>(v->value);
+}
+
+std::shared_ptr<Class> getClass(const Value& v) {
+    return std::get<std::shared_ptr<Class>>(v->value);
+}
+
+std::shared_ptr<ClassInstance> getClassInstance(const Value& v) {
+    return std::get<std::shared_ptr<ClassInstance>>(v->value);
 }
 
 // Convert value to string for printing
@@ -122,6 +146,12 @@ std::string valueToString(const Value& v) {
         }
         result += "}";
         return result;
+    } else if (isClass(v)) {
+        auto cls = getClass(v);
+        return "<class '" + cls->name + "'>";
+    } else if (isClassInstance(v)) {
+        auto instance = getClassInstance(v);
+        return "<" + instance->classRef->name + " object>";
     }
     return "<unknown>";
 }
@@ -163,6 +193,10 @@ void Environment::assign(const std::string& name, const Value& value) {
     }
     
     throw std::runtime_error("Undefined variable '" + name + "'");
+}
+
+const std::unordered_map<std::string, Value>& Environment::getVariables() const {
+    return variables;
 }
 
 Interpreter::Interpreter() {
@@ -234,23 +268,44 @@ Value Interpreter::evaluate(const Expression& expr) {
             return evaluateIndexExpr(static_cast<const IndexExpression&>(expr));
         }
         
+        case NodeType::ATTRIBUTE_EXPR: {
+            return evaluateAttributeExpr(static_cast<const AttributeExpression&>(expr));
+        }
+        
         case NodeType::CALL_EXPR: {
             const auto& call_expr = static_cast<const CallExpression&>(expr);
-            Value callee = evaluate(*call_expr.callee);
             
             std::vector<Value> arguments;
             for (const auto& arg : call_expr.arguments) {
                 arguments.push_back(evaluate(*arg));
             }
             
-            // Handle user-defined functions
+            // Check if this is a method call (obj.method())
+            Value self_object = nullptr;
+            if (call_expr.callee->type == NodeType::ATTRIBUTE_EXPR) {
+                const auto& attr_expr = static_cast<const AttributeExpression&>(*call_expr.callee);
+                Value object = evaluate(*attr_expr.object);
+                if (isClassInstance(object)) {
+                    self_object = object;
+                }
+            }
+            
+            Value callee = evaluate(*call_expr.callee);
+            
+            // Handle user-defined functions (including methods)
             if (isFunction(callee)) {
                 auto function = getFunction(callee);
                 
+                // For method calls, prepend self to arguments
+                std::vector<Value> finalArguments = arguments;
+                if (self_object != nullptr) {
+                    finalArguments.insert(finalArguments.begin(), self_object);
+                }
+                
                 // Check argument count
-                if (arguments.size() != function->parameters.size()) {
+                if (finalArguments.size() != function->parameters.size()) {
                     throw std::runtime_error("Expected " + std::to_string(function->parameters.size()) +
-                                           " arguments but got " + std::to_string(arguments.size()));
+                                           " arguments but got " + std::to_string(finalArguments.size()));
                 }
                 
                 // Create new environment for function execution
@@ -258,7 +313,7 @@ Value Interpreter::evaluate(const Expression& expr) {
                 
                 // Bind parameters to arguments
                 for (size_t i = 0; i < function->parameters.size(); ++i) {
-                    func_env->define(function->parameters[i], arguments[i]);
+                    func_env->define(function->parameters[i], finalArguments[i]);
                 }
                 
                 // Execute function body
@@ -309,7 +364,55 @@ Value Interpreter::evaluate(const Expression& expr) {
                 }
             }
             
-            throw std::runtime_error("Can only call functions");
+            // Handle class instantiation
+            if (isClass(callee)) {
+                auto cls = getClass(callee);
+                auto instance = std::make_shared<ClassInstance>(cls);
+                
+                // Call __init__ method if it exists
+                auto initIt = cls->methods.find("__init__");
+                if (initIt != cls->methods.end()) {
+                    auto initMethod = getFunction(initIt->second);
+                    
+                    // Check argument count (excluding self)
+                    if (arguments.size() + 1 != initMethod->parameters.size()) {
+                        throw std::runtime_error("__init__ expected " + std::to_string(initMethod->parameters.size() - 1) +
+                                               " arguments but got " + std::to_string(arguments.size()));
+                    }
+                    
+                    // Create new environment for method execution
+                    auto method_env = std::make_shared<Environment>(initMethod->closure);
+                    
+                    // Bind 'self' parameter
+                    method_env->define(initMethod->parameters[0], makeValue(instance));
+                    
+                    // Bind other parameters to arguments
+                    for (size_t i = 0; i < arguments.size(); ++i) {
+                        method_env->define(initMethod->parameters[i + 1], arguments[i]);
+                    }
+                    
+                    // Execute method body
+                    std::shared_ptr<Environment> previous = environment;
+                    environment = method_env;
+                    
+                    try {
+                        for (const auto& stmt : initMethod->body->statements) {
+                            execute(*stmt);
+                        }
+                    } catch (const ReturnException&) {
+                        // Ignore return value from __init__
+                    } catch (...) {
+                        environment = previous;
+                        throw;
+                    }
+                    
+                    environment = previous;
+                }
+                
+                return makeValue(instance);
+            }
+            
+            throw std::runtime_error("Can only call functions and classes");
         }
         
         default:
@@ -334,6 +437,20 @@ void Interpreter::execute(const Statement& stmt) {
                 environment->assign(assign_stmt.identifier, value);
             } catch (const std::runtime_error&) {
                 environment->define(assign_stmt.identifier, value);
+            }
+            break;
+        }
+        
+        case NodeType::ATTRIBUTE_ASSIGNMENT_STMT: {
+            const auto& attr_assign_stmt = static_cast<const AttributeAssignmentStatement&>(stmt);
+            Value object = evaluate(*attr_assign_stmt.object);
+            Value value = evaluate(*attr_assign_stmt.value);
+            
+            if (isClassInstance(object)) {
+                auto instance = getClassInstance(object);
+                instance->attributes[attr_assign_stmt.attribute] = value;
+            } else {
+                throw std::runtime_error("Can only assign attributes to class instances");
             }
             break;
         }
@@ -409,6 +526,11 @@ void Interpreter::execute(const Statement& stmt) {
             
             // Define the function in the current environment
             environment->define(func_stmt.name, makeValue(function));
+            break;
+        }
+        
+        case NodeType::CLASS_DEF_STMT: {
+            executeClassDef(static_cast<const ClassDefStatement&>(stmt));
             break;
         }
         
@@ -650,4 +772,60 @@ Value Interpreter::evaluateIndexExpr(const IndexExpression& expr) {
     } else {
         throw std::runtime_error("Object is not subscriptable");
     }
+}
+
+Value Interpreter::evaluateAttributeExpr(const AttributeExpression& expr) {
+    Value object = evaluate(*expr.object);
+    
+    if (isClassInstance(object)) {
+        auto instance = getClassInstance(object);
+        
+        // First check instance attributes
+        auto it = instance->attributes.find(expr.attribute);
+        if (it != instance->attributes.end()) {
+            return it->second;
+        }
+        
+        // Then check class methods
+        auto methodIt = instance->classRef->methods.find(expr.attribute);
+        if (methodIt != instance->classRef->methods.end()) {
+            return methodIt->second;
+        }
+        
+        throw std::runtime_error("'" + instance->classRef->name + "' object has no attribute '" + expr.attribute + "'");
+    }
+    
+    throw std::runtime_error("Object has no attributes");
+}
+
+void Interpreter::executeClassDef(const ClassDefStatement& stmt) {
+    // Create class object
+    auto cls = std::make_shared<Class>(stmt.name, stmt.body.get(), environment);
+    
+    // Execute class body in a new environment to collect methods
+    auto classEnv = std::make_shared<Environment>(environment);
+    auto previous = environment;
+    environment = classEnv;
+    
+    try {
+        // Execute statements directly in the class environment
+        for (const auto& statement : stmt.body->statements) {
+            execute(*statement);
+        }
+        
+        // Collect all function definitions as methods
+        for (const auto& [name, value] : classEnv->getVariables()) {
+            if (isFunction(value)) {
+                cls->methods[name] = value;
+            }
+        }
+    } catch (...) {
+        environment = previous;
+        throw;
+    }
+    
+    environment = previous;
+    
+    // Define the class in the current environment
+    environment->define(stmt.name, makeValue(cls));
 }

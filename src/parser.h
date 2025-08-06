@@ -22,16 +22,19 @@ enum class NodeType {
     LIST_EXPR,
     DICT_EXPR,
     INDEX_EXPR,
+    ATTRIBUTE_EXPR,
     
     // Statements
     EXPRESSION_STMT,
     ASSIGNMENT_STMT,
+    ATTRIBUTE_ASSIGNMENT_STMT,
     IF_STMT,
     WHILE_STMT,
     FOR_STMT,
     FUNCTION_DEF_STMT,
     RETURN_STMT,
     BLOCK_STMT,
+    CLASS_DEF_STMT,
     
     // Program
     PROGRAM
@@ -128,6 +131,14 @@ struct IndexExpression : public Expression {
         : Expression(NodeType::INDEX_EXPR, l, c), object(std::move(obj)), index(std::move(idx)) {}
 };
 
+struct AttributeExpression : public Expression {
+    std::unique_ptr<Expression> object;
+    std::string attribute;
+    
+    AttributeExpression(std::unique_ptr<Expression> obj, const std::string& attr, int l = 0, int c = 0)
+        : Expression(NodeType::ATTRIBUTE_EXPR, l, c), object(std::move(obj)), attribute(attr) {}
+};
+
 // Statement nodes
 struct Statement : public ASTNode {
     Statement(NodeType t, int l = 0, int c = 0) : ASTNode(t, l, c) {}
@@ -146,6 +157,17 @@ struct AssignmentStatement : public Statement {
     
     AssignmentStatement(const std::string& id, std::unique_ptr<Expression> val, int l = 0, int c = 0)
         : Statement(NodeType::ASSIGNMENT_STMT, l, c), identifier(id), value(std::move(val)) {}
+};
+
+struct AttributeAssignmentStatement : public Statement {
+    std::unique_ptr<Expression> object;
+    std::string attribute;
+    std::unique_ptr<Expression> value;
+    
+    AttributeAssignmentStatement(std::unique_ptr<Expression> obj, const std::string& attr, 
+                                std::unique_ptr<Expression> val, int l = 0, int c = 0)
+        : Statement(NodeType::ATTRIBUTE_ASSIGNMENT_STMT, l, c), 
+          object(std::move(obj)), attribute(attr), value(std::move(val)) {}
 };
 
 struct BlockStatement : public Statement {
@@ -193,6 +215,14 @@ struct FunctionDefStatement : public Statement {
         : Statement(NodeType::FUNCTION_DEF_STMT, l, c), name(n), parameters(std::move(params)), body(std::move(b)) {}
 };
 
+struct ClassDefStatement : public Statement {
+    std::string name;
+    std::unique_ptr<BlockStatement> body;
+    
+    ClassDefStatement(const std::string& n, std::unique_ptr<BlockStatement> b, int l = 0, int c = 0)
+        : Statement(NodeType::CLASS_DEF_STMT, l, c), name(n), body(std::move(b)) {}
+};
+
 struct ReturnStatement : public Statement {
     std::unique_ptr<Expression> value;
     
@@ -233,10 +263,12 @@ private:
     std::unique_ptr<Statement> statement();
     std::unique_ptr<Statement> expressionStatement();
     std::unique_ptr<Statement> assignmentStatement();
+    std::unique_ptr<Statement> attributeAssignmentStatement();
     std::unique_ptr<Statement> ifStatement();
     std::unique_ptr<Statement> whileStatement();
     std::unique_ptr<Statement> forStatement();
     std::unique_ptr<Statement> functionDefStatement();
+    std::unique_ptr<Statement> classDefStatement();
     std::unique_ptr<Statement> returnStatement();
     std::unique_ptr<BlockStatement> blockStatement();
     

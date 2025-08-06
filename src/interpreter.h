@@ -13,14 +13,16 @@ class Environment;
 
 // Forward declare Value and container types
 struct Function;
+struct Class;
+struct ClassInstance;
 using ListType = std::vector<std::shared_ptr<struct ValueWrapper>>;
 using DictType = std::map<std::string, std::shared_ptr<struct ValueWrapper>>;
 
 // Value wrapper for recursive types
 struct ValueWrapper {
-    std::variant<double, std::string, bool, std::nullptr_t, std::shared_ptr<Function>, ListType, DictType> value;
+    std::variant<double, std::string, bool, std::nullptr_t, std::shared_ptr<Function>, ListType, DictType, std::shared_ptr<Class>, std::shared_ptr<ClassInstance>> value;
     
-    ValueWrapper(const std::variant<double, std::string, bool, std::nullptr_t, std::shared_ptr<Function>, ListType, DictType>& v) 
+    ValueWrapper(const std::variant<double, std::string, bool, std::nullptr_t, std::shared_ptr<Function>, ListType, DictType, std::shared_ptr<Class>, std::shared_ptr<ClassInstance>>& v) 
         : value(v) {}
 };
 
@@ -44,6 +46,8 @@ Value makeValue(std::nullptr_t);
 Value makeValue(std::shared_ptr<Function> f);
 Value makeValue(const ListType& l);
 Value makeValue(const DictType& d);
+Value makeValue(std::shared_ptr<Class> c);
+Value makeValue(std::shared_ptr<ClassInstance> ci);
 
 // Helper functions for value access
 bool isNumber(const Value& v);
@@ -53,6 +57,8 @@ bool isNone(const Value& v);
 bool isFunction(const Value& v);
 bool isList(const Value& v);
 bool isDict(const Value& v);
+bool isClass(const Value& v);
+bool isClassInstance(const Value& v);
 
 double getNumber(const Value& v);
 std::string getString(const Value& v);
@@ -60,6 +66,8 @@ bool getBool(const Value& v);
 std::shared_ptr<Function> getFunction(const Value& v);
 ListType& getList(const Value& v);
 DictType& getDict(const Value& v);
+std::shared_ptr<Class> getClass(const Value& v);
+std::shared_ptr<ClassInstance> getClassInstance(const Value& v);
 
 // Convert value to string for printing
 std::string valueToString(const Value& v);
@@ -72,6 +80,23 @@ struct Function {
     
     Function(std::vector<std::string> params, const BlockStatement* b, std::shared_ptr<Environment> env)
         : parameters(std::move(params)), body(b), closure(env) {}
+};
+
+struct Class {
+    std::string name;
+    const BlockStatement* body;
+    std::shared_ptr<Environment> closure;
+    std::unordered_map<std::string, Value> methods;
+    
+    Class(const std::string& n, const BlockStatement* b, std::shared_ptr<Environment> env)
+        : name(n), body(b), closure(env) {}
+};
+
+struct ClassInstance {
+    std::shared_ptr<Class> classRef;
+    std::unordered_map<std::string, Value> attributes;
+    
+    ClassInstance(std::shared_ptr<Class> c) : classRef(c) {}
 };
 
 // Environment for variable storage
@@ -87,6 +112,7 @@ public:
     void defineBuiltin(const std::string& name, BuiltinFunction func);
     Value get(const std::string& name);
     void assign(const std::string& name, const Value& value);
+    const std::unordered_map<std::string, Value>& getVariables() const;
 };
 
 // Interpreter class
@@ -109,6 +135,10 @@ private:
     Value evaluateListExpr(const ListExpression& expr);
     Value evaluateDictExpr(const DictExpression& expr);
     Value evaluateIndexExpr(const IndexExpression& expr);
+    Value evaluateAttributeExpr(const AttributeExpression& expr);
+    
+    // Statement execution methods
+    void executeClassDef(const ClassDefStatement& stmt);
     
     // Helper methods
     bool isTruthy(const Value& value);

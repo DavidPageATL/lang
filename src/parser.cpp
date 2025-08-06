@@ -96,16 +96,30 @@ std::unique_ptr<Statement> Parser::statement() {
     if (match({TokenType::WHILE})) return whileStatement();
     if (match({TokenType::FOR})) return forStatement();
     if (match({TokenType::DEF})) return functionDefStatement();
+    if (match({TokenType::CLASS})) return classDefStatement();
     if (match({TokenType::RETURN})) return returnStatement();
     
-    // Check for assignment
+    // Check for assignment (both simple and attribute)
     if (check(TokenType::IDENTIFIER)) {
         size_t saved = current;
         advance(); // consume identifier
+        
         if (check(TokenType::ASSIGN)) {
+            // Simple assignment: identifier = value
             current = saved; // reset
             return assignmentStatement();
+        } else if (check(TokenType::DOT)) {
+            advance(); // consume dot
+            if (check(TokenType::IDENTIFIER)) {
+                advance(); // consume attribute
+                if (check(TokenType::ASSIGN)) {
+                    // Attribute assignment: obj.attr = value
+                    current = saved; // reset
+                    return attributeAssignmentStatement();
+                }
+            }
         }
+        
         current = saved; // reset
     }
     
@@ -135,6 +149,27 @@ std::unique_ptr<Statement> Parser::assignmentStatement() {
     }
     
     return std::make_unique<AssignmentStatement>(name.value, std::move(value));
+}
+
+std::unique_ptr<Statement> Parser::attributeAssignmentStatement() {
+    auto object = std::make_unique<IdentifierExpression>(advance().value); // consume object identifier
+    consume(TokenType::DOT, "Expected '.' after object");
+    
+    if (!check(TokenType::IDENTIFIER)) {
+        throw std::runtime_error("Expected attribute name after '.'");
+    }
+    Token attribute = advance(); // consume attribute
+    
+    consume(TokenType::ASSIGN, "Expected '=' after attribute name");
+    
+    auto value = expression();
+    
+    // Consume optional newline
+    if (check(TokenType::NEWLINE)) {
+        advance();
+    }
+    
+    return std::make_unique<AttributeAssignmentStatement>(std::move(object), attribute.value, std::move(value));
 }
 
 std::unique_ptr<Statement> Parser::ifStatement() {
@@ -204,6 +239,17 @@ std::unique_ptr<Statement> Parser::functionDefStatement() {
     auto body = blockStatement();
     
     return std::make_unique<FunctionDefStatement>(name.value, std::move(parameters), std::move(body));
+}
+
+std::unique_ptr<Statement> Parser::classDefStatement() {
+    Token name = advance();
+    consume(TokenType::COLON, "Expected ':' after class name");
+    consume(TokenType::NEWLINE, "Expected newline after ':'");
+    consume(TokenType::INDENT, "Expected indentation after class definition");
+    
+    auto body = blockStatement();
+    
+    return std::make_unique<ClassDefStatement>(name.value, std::move(body));
 }
 
 std::unique_ptr<Statement> Parser::returnStatement() {
@@ -352,6 +398,12 @@ std::unique_ptr<Expression> Parser::call() {
             auto index = expression();
             consume(TokenType::RIGHT_BRACKET, "Expected ']' after index");
             expr = std::make_unique<IndexExpression>(std::move(expr), std::move(index));
+        } else if (match({TokenType::DOT})) {
+            if (!check(TokenType::IDENTIFIER)) {
+                throw std::runtime_error("Expected attribute name after '.'");
+            }
+            Token name = advance();
+            expr = std::make_unique<AttributeExpression>(std::move(expr), name.value);
         } else {
             break;
         }

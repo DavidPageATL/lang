@@ -275,7 +275,7 @@ void Environment::define(const std::string& name, const Value& value) {
     variables[name] = value;
 }
 
-void Environment::defineBuiltin(const std::string& name, BuiltinFunction func) {
+void Environment::defineBuiltin(const std::string& name, [[maybe_unused]] BuiltinFunction func) {
     // For simplicity, store builtin function names as special string values
     variables[name] = makeValue(std::string("builtin:" + name));
 }
@@ -876,13 +876,13 @@ void Interpreter::setupBuiltins() {
     });
     
     // Raise function for throwing exceptions
-    globals->defineBuiltin("raise", [](const std::vector<Value>& args) -> Value {
+    globals->defineBuiltin("raise", [](const std::vector<Value>& /*args*/) -> Value {
         // This lambda is not actually used, the logic is in the function call handler
         return makeValue(nullptr);
     });
     
     // Length function
-    globals->defineBuiltin("len", [](const std::vector<Value>& args) -> Value {
+    globals->defineBuiltin("len", [](const std::vector<Value>& /*args*/) -> Value {
         return makeValue(nullptr);
     });
 }
